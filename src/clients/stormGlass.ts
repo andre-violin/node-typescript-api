@@ -1,6 +1,7 @@
 import { InternalError } from '@src/util/errors/internal-error';
-import { AxiosError, AxiosStatic } from 'axios';
 import config, { IConfig } from 'config';
+// Another way to have similar behavior to TS namespaces
+import * as HTTPUtil from '@src/util/request';
 
 export interface StormGlassPointSource {
   [key: string]: number;
@@ -32,6 +33,19 @@ export interface ForecastPoint {
   windSpeed: number;
 }
 
+/**
+ * This error type is used when a request reaches out to the StormGlass API but returns an error
+ */
+export class StormGlassUnexpectedResponseError extends InternalError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * This error type is used when something breaks before the request reaches out to the StormGlass API
+ * eg: Network error, or request validation error
+ */
 export class ClientRequestError extends InternalError {
   constructor(message: string) {
     const internalMessage =
@@ -48,6 +62,9 @@ export class StormGlassResponseError extends InternalError {
   }
 }
 
+/**
+ * We could have proper type for the configuration
+ */
 const stormGlassResourceConfig: IConfig = config.get(
   'App.resources.StormGlass'
 );
@@ -57,11 +74,9 @@ export class StormGlass {
     'swellDirection,swellHeight,swellPeriod,waveDirection,waveHeight,windDirection,windSpeed';
   readonly stormGlassAPISource = 'noaa';
 
-  constructor(protected request: AxiosStatic) {}
+  constructor(protected request = new HTTPUtil.Request()) {}
 
   public async fetchPoints(lat: number, lng: number): Promise<ForecastPoint[]> {
-    console.log(stormGlassResourceConfig);
-
     try {
       const response = await this.request.get<StormGlassForecastResponse>(
         `${stormGlassResourceConfig.get(
@@ -80,19 +95,16 @@ export class StormGlass {
       /**
        * This is handling the Axios errors specifically
        */
-      const axiosError = err as AxiosError;
-      if (
-        axiosError instanceof Error &&
-        axiosError.response &&
-        axiosError.response.status
-      ) {
+      if (err instanceof Error && HTTPUtil.Request.isRequestError(err)) {
+        const error = HTTPUtil.Request.extractErrorData(err);
         throw new StormGlassResponseError(
-          `Error: ${JSON.stringify(axiosError.response.data)} Code: ${
-            axiosError.response.status
-          }`
+          `Error: ${JSON.stringify(error.data)} Code: ${error.status}`
         );
       }
-      throw new ClientRequestError((err as { message: any }).message);
+      /**
+       * All the other errors will fallback to a generic client error
+       */
+      throw new ClientRequestError(JSON.stringify(err));
     }
   }
   private normalizeResponse(
