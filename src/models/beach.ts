@@ -34,6 +34,3 @@ const schema = new Schema(
 );
 
 export const Beach = mongoose.model<Beach, Model<Beach>>('Beach', schema);
-
-// interface BeachModel extends Omit<Beach, '_id'>, Document {}
-// export const Beach: Model<BeachModel> = mongoose.model('Beach', schema);
